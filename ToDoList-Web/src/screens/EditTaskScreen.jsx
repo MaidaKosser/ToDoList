@@ -6,14 +6,21 @@ export default function EditTaskScreen() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Fetch tasks on mount
   useEffect(() => {
     const fetchTasks = async () => {
       try {
         const res = await fetch("http://localhost:5000/tasks");
         if (!res.ok) throw new Error("Failed to fetch tasks");
         const data = await res.json();
-        // Add `editing` flag for inline editing
-        const editableData = data.map(t => ({ ...t, editing: false }));
+
+        // Add editing + originalTitle fields
+        const editableData = data.map(t => ({
+          ...t,
+          editing: false,
+          originalTitle: null,
+        }));
+
         setTasks(editableData);
       } catch (err) {
         console.error(err);
@@ -25,39 +32,95 @@ export default function EditTaskScreen() {
     fetchTasks();
   }, []);
 
+  // Toggle edit mode + store original title
   const handleEditToggle = (id) => {
     setTasks(prev =>
-      prev.map(t => (t._id === id ? { ...t, editing: !t.editing } : t))
+      prev.map(t =>
+        t._id === id
+          ? { ...t, editing: !t.editing, originalTitle: t.title }
+          : t
+      )
     );
   };
 
+  // Handle input changes
   const handleChange = (id, value) => {
+    if (value.length > 250) return; // Limit chars
+
+    const validPattern = /^[a-zA-Z0-9\s]*$/;
+    if (!validPattern.test(value)) {
+      showToast("Only letters, numbers & spaces allowed", "error");
+      return;
+    }
+
     setTasks(prev =>
       prev.map(t => (t._id === id ? { ...t, title: value } : t))
     );
   };
 
+  // Handle update
   const handleUpdate = async (id) => {
     const task = tasks.find(t => t._id === id);
-    if (!task.title.trim()) {
+    const trimmedTitle = task.title.trim();
+
+    // ✅ 1. Empty check
+    if (!trimmedTitle) {
       showToast("Task cannot be empty", "error");
       return;
     }
 
+    // ✅ 2. Min length
+    if (trimmedTitle.length < 3) {
+      showToast("Task must be at least 3 characters", "error");
+      return;
+    }
+
+    // ✅ 3. Max length
+    if (trimmedTitle.length > 250) {
+      showToast("Task cannot exceed 250 characters", "error");
+      return;
+    }
+
+    // ✅ 4. Regex validation
+    const validPattern = /^[a-zA-Z0-9\s]+$/;
+    if (!validPattern.test(trimmedTitle)) {
+      showToast("Only letters, numbers & spaces allowed", "error");
+      return;
+    }
+
+    // ✅ 5. Duplicate check
+    const duplicate = tasks.some(
+      (t) => t._id !== id && t.title.toLowerCase() === trimmedTitle.toLowerCase()
+    );
+    if (duplicate) {
+      showToast("Task already exists", "error");
+      return;
+    }
+
+    // ✅ 6. No change check
+    if (task.originalTitle && task.originalTitle.trim() === trimmedTitle) {
+      showToast("No changes detected!", "info");
+      return;
+    }
+
+    // ✅ Send update request
     try {
       const res = await fetch(`http://localhost:5000/tasks/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: task.title }),
+        body: JSON.stringify({ title: trimmedTitle }),
       });
       if (!res.ok) throw new Error("Failed to update task");
       const updatedTask = await res.json();
 
       setTasks(prev =>
         prev.map(t =>
-          t._id === id ? { ...updatedTask, editing: false } : t
+          t._id === id
+            ? { ...updatedTask, editing: false, originalTitle: null }
+            : t
         )
       );
+
       showToast("Task updated successfully!", "success");
     } catch (err) {
       console.error(err);
@@ -83,6 +146,7 @@ export default function EditTaskScreen() {
                   type="text"
                   value={task.title}
                   onChange={(e) => handleChange(task._id, e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUpdate(task._id)} // ✅ Enter updates
                   style={taskInputStyle}
                   autoFocus
                 />
@@ -118,7 +182,8 @@ const wrapperStyles = {
   justifyContent: "center",
   alignItems: "center",
   background: "linear-gradient(135deg, #74ebd5 0%, #ACB6E5 100%)",
-  padding: "40px",
+  overflowY: "auto",
+  padding: "100px 20px",
   boxSizing: "border-box",
   fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
 };
@@ -162,7 +227,7 @@ const taskInputStyle = {
 };
 
 const updateBtnStyle = {
-  background: "#28a745", // green
+  background: "#28a745",
   color: "#fff",
   border: "none",
   padding: "8px 16px",

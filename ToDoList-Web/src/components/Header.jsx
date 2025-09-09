@@ -10,7 +10,6 @@ export default function Header() {
         {/* Right side: Links */}
         <div style={styles.links}>
           <Link to="/" style={styles.link}>🏠 Home</Link>
-          <Link to="/add" style={styles.link}>➕ Add</Link>
           <Link to="/edit/1" style={styles.link}>✏️ Edit</Link>
         </div>
       </nav>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import TaskList from "../components/TaskList";
+import TaskInput from "../components/TaskInput"; // ✅ import your input component
 import { showToast } from "../components/Toast";
 
 export default function HomeScreen() {
@@ -24,50 +24,78 @@ export default function HomeScreen() {
   }, []);
 
   // Delete task via backend
-const handleDelete = async (id) => {
+  const handleDelete = async (id) => {
+    try {
+      const res = await fetch(`http://localhost:5000/tasks/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete task");
+
+      const data = await res.json();
+      setTasks((prev) => prev.filter((t) => t._id !== data._id));
+      showToast("Task deleted successfully!", "success");
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to delete task", "error");
+    }
+  };
+
+  // Add new task via backend
+const handleAdd = async () => {
+  const trimmedTask = newTask.trim();
+
+  // 1. Empty check
+  if (!trimmedTask) {
+    showToast("Task cannot be empty", "error");
+    return;
+  }
+
+  // 2. Min/Max length validation
+  if (trimmedTask.length < 3) {
+    showToast("Task must be at least 3 characters", "error");
+    return;
+  }
+  if (trimmedTask.length > 250) {
+    showToast("Task cannot exceed 250 characters", "error");
+    return;
+  }
+
+  // 3. Regex validation (letters, numbers, spaces only)
+  const validPattern = /^[a-zA-Z0-9\s]+$/;
+  if (!validPattern.test(trimmedTask)) {
+    showToast("Task can only contain letters and numbers", "error");
+    return;
+  }
+
+  // 4. Duplicate prevention
+  const duplicate = tasks.some(
+    (t) => t.title.toLowerCase() === trimmedTask.toLowerCase()
+  );
+  if (duplicate) {
+    showToast("Task already exists", "error");
+    return;
+  }
+
+  // ✅ If all validations pass → Save to backend
   try {
-    const res = await fetch(`http://localhost:5000/tasks/${id}`, {
-      method: "DELETE",
+    const res = await fetch("http://localhost:5000/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: trimmedTask }),
     });
-    if (!res.ok) throw new Error("Failed to delete task");
 
-    const data = await res.json(); // { _id: "...", message: "Task deleted successfully" }
+    if (!res.ok) throw new Error("Failed to add task");
+    const addedTask = await res.json();
 
-    setTasks((prev) => prev.filter((t) => t._id !== data._id)); // remove from frontend state
-    showToast("Task deleted successfully!", "success");
+    setTasks((prev) => [...prev, addedTask]);
+    setNewTask(""); // clear input
+    showToast("Task added successfully!", "success");
   } catch (err) {
     console.error(err);
-    showToast("Failed to delete task", "error");
+    showToast("Failed to add task", "error");
   }
 };
 
-
-
-  // Add new task via backend
-  const handleAdd = async () => {
-    if (!newTask.trim()) {
-      showToast("Task cannot be empty", "error");
-      return;
-    }
-
-    try {
-      const res = await fetch("http://localhost:5000/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newTask }),
-      });
-
-      if (!res.ok) throw new Error("Failed to add task");
-      const addedTask = await res.json();
-
-      setTasks((prev) => [...prev, addedTask]);
-      setNewTask(""); // clear input
-      showToast("Task added successfully!", "success");
-    } catch (err) {
-      console.error(err);
-      showToast("Failed to add task", "error");
-    }
-  };
 
   return (
     <div style={styles.wrapper}>
@@ -75,54 +103,48 @@ const handleDelete = async (id) => {
         <h1 style={styles.header}>✅ To-Do List</h1>
         <p style={styles.subHeader}>Manage your daily tasks efficiently</p>
 
-        <div style={styles.addTaskRow}>
-          <input
-            type="text"
-            placeholder="Enter new task..."
-            value={newTask}
-            onChange={(e) => setNewTask(e.target.value)}
-            style={styles.input}
-          />
-          <button onClick={handleAdd} style={styles.addBtn}>Add</button>
-        </div>
+        {/* ✅ use TaskInput instead of inline input */}
+        <TaskInput title={newTask} setTitle={setNewTask} onAdd={handleAdd} />
 
-         {tasks.length === 0 ? (
-  <p style={styles.noTask}>No tasks found. Add one above!</p>
-) : (
-  tasks.map((task) => (
-    <div
-      key={task._id}
-      style={styles.taskCard}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = styles.taskCardHover.boxShadow;
-        e.currentTarget.style.transform = styles.taskCardHover.transform;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = styles.taskCard.boxShadow;
-        e.currentTarget.style.transform = "none";
-      }}
-    >
-      <span style={styles.taskTitle}>{task.title}</span>
-      <button
-        onClick={() => handleDelete(task._id)}
-        style={styles.deleteBtn}
-        onMouseEnter={(e) =>
-          (e.currentTarget.style.background = styles.deleteBtnHover.background)
-        }
-        onMouseLeave={(e) =>
-          (e.currentTarget.style.background = styles.deleteBtn.background)
-        }
-      >
-        Delete
-      </button>
-    </div>
-  ))
-)}
-
+        {tasks.length === 0 ? (
+          <p style={styles.noTask}>No tasks found. Add one above!</p>
+        ) : (
+          tasks.map((task) => (
+            <div
+              key={task._id}
+              style={styles.taskCard}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = styles.taskCardHover.boxShadow;
+                e.currentTarget.style.transform =
+                  styles.taskCardHover.transform;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = styles.taskCard.boxShadow;
+                e.currentTarget.style.transform = "none";
+              }}
+            >
+              <span style={styles.taskTitle}>{task.title}</span>
+              <button
+                onClick={() => handleDelete(task._id)}
+                style={styles.deleteBtn}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background =
+                    styles.deleteBtnHover.background)
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = styles.deleteBtn.background)
+                }
+              >
+                Delete
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
 }
+
 const styles = {
   wrapper: {
     minHeight: "100vh",
@@ -131,7 +153,8 @@ const styles = {
     justifyContent: "center",
     alignItems: "center",
     background: "linear-gradient(135deg, #74ebd5 0%, #ACB6E5 100%)",
-    padding: "40px",
+    overflowY: "auto", // ✅ scroll if too many tasks
+    padding: "100px 20px", // ✅ fixed top/bottom spacing
     boxSizing: "border-box",
     fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
   },
@@ -142,7 +165,6 @@ const styles = {
     width: "100%",
     maxWidth: "700px",
     boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-    borderTop: "6px solid #25d8fcff",
   },
   header: {
     fontSize: "36px",
@@ -156,40 +178,6 @@ const styles = {
     color: "#666",
     marginBottom: "30px",
     textAlign: "center",
-  },
-  addTaskRow: {
-    display: "flex",
-    gap: "15px",
-    marginBottom: "30px",
-  },
-  input: {
-    flex: 1,
-    padding: "14px 16px",
-    borderRadius: "12px",
-    border: "1px solid #ccc",
-    fontSize: "16px",
-    outline: "none",
-    transition: "all 0.2s ease",
-  },
-  addBtn: {
-    background: "rgba(28, 179, 28, 0.67)",
-    color: "#fffffeff",
-    border: "none",
-    padding: "14px 20px",
-    borderRadius: "12px",
-    cursor: "pointer",
-    fontSize: "16px",
-    fontWeight: "600",
-    transition: "all 0.2s ease",
-  },
-  addBtnHover: {
-    background: "#6a11cb",
-  },
-  title: {
-    fontSize: "22px",
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: "16px",
   },
   taskCard: {
     display: "flex",
